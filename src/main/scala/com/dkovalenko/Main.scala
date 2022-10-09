@@ -5,13 +5,12 @@ import org.http4s.server.Router
 import sttp.tapir.server.http4s.ztapir.ZHttp4sServerInterpreter
 import zio.interop.catz._
 import zio.{Scope, Task, ZIO, ZIOAppArgs, ZIOAppDefault}
-import http.SchemaAPI
 
 object Main extends ZIOAppDefault {
 
   override def run: ZIO[Any with ZIOAppArgs with Scope, Any, Any] = {
 
-    val routes = ZHttp4sServerInterpreter().from(SchemaAPI.endpoints).toRoutes
+    val routes = ZHttp4sServerInterpreter().from(http.ServerAPI.allEndpoints).toRoutes
 
     val port = sys.env.get("http.port").map(_.toInt).getOrElse(8080)
 
