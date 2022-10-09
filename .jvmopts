@@ -1,0 +1,6 @@
+-XX:MaxMetaspaceSize=1g
+-XX:ReservedCodeCacheSize=1g
+-Xms1g
+-Xmx3g
+-XshowSettings:vm
+-Xss4m
