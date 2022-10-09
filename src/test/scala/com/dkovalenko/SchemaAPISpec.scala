@@ -13,8 +13,8 @@ import sttp.client3.circe._
 import sttp.tapir.ztapir.RIOMonadError
 
 object SchemaAPISpec extends ZIOSpecDefault {
-  def spec = suite("Schema API spec")(
-    test("return schema") {
+  def spec = suite("Schema API should")(
+    test("return HTTP \"Not Found\" for non-existent schema") {
       // given
       val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
         .whenServerEndpoint(getSchemaServerEndpoint)
@@ -23,13 +23,13 @@ object SchemaAPISpec extends ZIOSpecDefault {
 
       // when
       val response = basicRequest
-        .get(uri"http://test.com/schema/test-schema-id")
+        .get(uri"http://test.com/schema/non-existent-schema-id")
         .send(backendStub)
 
       // then
-      assertZIO(response.map(_.body))(isRight(equalTo("GET getSchema test-schema-id")))
+      assertZIO(response.map(_.code.code))(equalTo(404))
     },
-    test("update schema") {
+    test("upload valid schema") {
       // given
       val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
         .whenServerEndpoint(updateSchemaServerEndpoint)
@@ -52,7 +52,41 @@ object SchemaAPISpec extends ZIOSpecDefault {
       // then
       assertZIO(response.map(_.body))(isRight(equalTo(result)))
     },
-    test("validate doc by schema") {
+    test("return HTTP \"Bad Request\" for invalid schema") {
+      // given
+      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+        .whenServerEndpoint(updateSchemaServerEndpoint)
+        .thenRunLogic()
+        .backend()
+
+      val schemaId = "test-schema-id"
+
+      // when
+      val response = basicRequest
+        .post(uri"http://test.com/schema/${schemaId}")
+        .body("invalid json")
+        .response(asJson[ApiResult])
+        .send(backendStub)
+
+      // then
+      assertZIO(response.map(_.code.code))(equalTo(400)) //Bad request
+    },
+    test("return existing schema") {
+      // given
+      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+        .whenServerEndpoint(getSchemaServerEndpoint)
+        .thenRunLogic()
+        .backend()
+
+      // when
+      val response = basicRequest
+        .get(uri"http://test.com/schema/test-schema-id")
+        .send(backendStub)
+
+      // then
+      assertZIO(response.map(_.body))(isRight(equalTo("GET getSchema test-schema-id")))
+    },
+    test("verify valid document by schema") {
       // given
       val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
         .whenServerEndpoint(validateDocServerEndpoint)
@@ -75,5 +109,6 @@ object SchemaAPISpec extends ZIOSpecDefault {
       // then
       assertZIO(response.map(_.body))(isRight(equalTo(result)))
     }
+    // test("verify invalid document by schema") {
   )
 }
