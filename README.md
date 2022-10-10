@@ -1,26 +1,17 @@
 ## JSON validate server. Validates documents using uploaded JSON schema.
+
+A REST-service for validating JSON documents against JSON Schemas.
+
+This REST-service allow to upload JSON Schemas and store them at unique URI and then validate JSON documents against these URIs
+
 Stack: Scala 2.13, tapir, zio, http4s
 
+Persistance: Redis. Start a Redis server by running:
 ```
-POST    /schema/SCHEMAID        - Upload a JSON Schema with unique `SCHEMAID`
-GET     /schema/SCHEMAID        - Download a JSON Schema with unique `SCHEMAID`
-
-POST    /validate/SCHEMAID      - Validate a JSON document against the JSON Schema identified by `SCHEMAID`
+docker-compose -f docker-compose-redis.yaml up
 ```
 
-If you don't have [sbt](https://www.scala-sbt.org) installed already, you can use the provided sbtx wrapper script:
-
-```shell
-./sbtx -h # shows an usage of a wrapper script
-./sbtx compile # build the project
-./sbtx test # run the tests
-./sbtx run # run the application (Main)
-./sbtx rs # run the application with hot reload (Main)
-```
-
-For more details check the [sbtx usage](https://github.com/dwijnand/sbt-extras#sbt--h) page.
-
-Otherwise, if sbt is already installed, you can use the standard commands:
+After Redis you can start the backend server. If sbt is installed, you can use the standard commands:
 
 ```shell
 sbt compile # build the project
@@ -28,4 +19,12 @@ sbt test # run the tests
 sbt rs # run the application with hot reload (Main)
 ```
 
-After the server start go to /docs endpoint to see the OpenAPI docs and to test the endpoints using the web UI.
+After the backend start you can open /docs endpoint to see the OpenAPI docs. Also it's possible to test the endpoints using the web UI.
+
+API Routes:
+```
+POST    /schema/SCHEMAID        - Upload a JSON Schema with unique `SCHEMAID`
+GET     /schema/SCHEMAID        - Download a JSON Schema with unique `SCHEMAID`
+
+POST    /validate/SCHEMAID      - Validate a JSON document against the JSON Schema identified by `SCHEMAID`
+```

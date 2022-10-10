@@ -15,6 +15,10 @@ object ApiResult {
   case class Success(action: String, id: String, val status: String = "success") extends ApiResult
 
   case class Error(action: String, id: String, message: String, val status: String = "error") extends ApiResult
+
+  def fromThrowable(ex: Throwable, action: String, id: String): ApiResult.Error = {
+    Error(action, id, ex.getMessage())
+  }
   
   implicit val successCodec: Codec[Success] = deriveCodec
   implicit val errorCodec: Codec[Error] = deriveCodec
