@@ -10,9 +10,21 @@ trait SchemaService {
 
   def updateSchema(key: String, value: String): ZIO[Any, ApplicationError, Boolean]
 
+  def validateDocument(schemaKey: String, json: String): ZIO[Any, ApplicationError, Boolean]
 }
 
-class SchemaServiceLive(repo: SchemaRepository) extends SchemaService {
+object SchemaService {
+  def getSchema(key: String): ZIO[SchemaService,Nothing,ZIO[Any,ApplicationError,String]] = 
+    ZIO.serviceWith[SchemaService](_.getSchema(key))
+
+  def updateSchema(key: String, value: String): ZIO[SchemaService, Nothing, ZIO[Any, ApplicationError, Boolean]] = 
+    ZIO.serviceWith[SchemaService](_.updateSchema(key, value))
+
+  def validateDocument(schemaKey: String, json: String): ZIO[SchemaService, Nothing, ZIO[Any, ApplicationError, Boolean]] =
+    ZIO.serviceWith[SchemaService](_.validateDocument(schemaKey, json))
+}
+
+case class SchemaServiceLive(repo: SchemaRepository) extends SchemaService {
   def getSchema(key: String): ZIO[Any, ApplicationError, String] =
     repo
       .getByIdAsString(key)
@@ -40,4 +52,9 @@ class SchemaServiceLive(repo: SchemaRepository) extends SchemaService {
     } yield isValid)
       .catchAll(failure => ZIO.fail(ApplicationError.GeneralThrowable(failure)))
 
+}
+
+object SchemaServiceLive {
+  val layer: ZLayer[SchemaRepository, Nothing, SchemaService] =
+    ZLayer.fromFunction(SchemaServiceLive(_))
 }

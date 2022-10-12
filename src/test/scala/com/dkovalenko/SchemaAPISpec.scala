@@ -12,23 +12,38 @@ import zio.test.{ZIOSpecDefault, assertZIO}
 import io.circe.generic.auto._
 import sttp.client3.circe._
 import sttp.tapir.ztapir.RIOMonadError
+import com.dkovalenko.http.SchemaAPI
+import com.dkovalenko.http.SchemaAPITapir
+import com.dkovalenko.schema.SchemaServiceLive
+import com.dkovalenko.schema.SchemaRepositoryRedis
+import com.dkovalenko.config.RedisConfig
+import zio.ZLayer
 
 object SchemaAPISpec extends ZIOSpecDefault {
+
+  object Layers {
+    val sharedLayer = ZLayer.make[SchemaAPI](
+      SchemaAPITapir.layer,
+      SchemaServiceLive.layer,
+      SchemaRepositoryRedis.layer,
+      RedisConfig.test
+    )
+  }
+
   def spec = suite("Schema API should")(
     test("return HTTP \"Not Found\" for non-existent schema") {
-      // given
-      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
-        .whenServerEndpoint(getSchemaServerEndpoint)
-        .thenRunLogic()
-        .backend()
+      for {
+        endpoint <- SchemaAPI.getSchemaServerEndpoint()
+        backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+          .whenServerEndpointRunLogic(endpoint)
+          // .thenRunLogic()
+          .backend()
 
-      // when
-      val response = basicRequest
-        .get(uri"http://test.com/schema/non-existent-schema-id")
-        .send(backendStub)
+        response = basicRequest
+          .get(uri"http://test.com/schema/non-existent-schema-id")
+          .send(backendStub)
+      } yield assertZIO(response.map(_.code.code))(equalTo(404))
 
-      // then
-      assertZIO(response.map(_.code.code))(equalTo(404))
     },
     test("upload valid schema") {
       // given
@@ -36,8 +51,6 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .whenServerEndpoint(updateSchemaServerEndpoint)
         .thenRunLogic()
         .backend()
-
-      
 
       // when
       val response = basicRequest
@@ -47,9 +60,9 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .send(backendStub)
 
       val result = ApiResultSuccess.Created(
-          action = "uploadSchema",
-          id = Fixtures.schemaId
-        )
+        action = "uploadSchema",
+        id     = Fixtures.schemaId
+      )
       // then
       assertZIO(response.map(_.body))(isRight(equalTo(result)))
       assertZIO(response.map(_.code.code))(equalTo(201))
@@ -69,7 +82,7 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .send(backendStub)
 
       // then
-      assertZIO(response.map(_.code.code))(equalTo(400)) //Bad request
+      assertZIO(response.map(_.code.code))(equalTo(400)) // Bad request
     },
     test("return existing schema") {
       // given
@@ -101,13 +114,13 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .send(backendStub)
 
       val result = ApiResultSuccess.Success(
-          action = "validateDocument",
-          id = Fixtures.schemaId
-        )
+        action = "validateDocument",
+        id     = Fixtures.schemaId
+      )
       // then
       assertZIO(response.map(_.body))(isRight(equalTo(result)))
     },
-     test("verify invalid document by schema") {
+    test("verify invalid document by schema") {
       // given
       val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
         .whenServerEndpoint(validateDocServerEndpoint)
@@ -122,13 +135,15 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .send(backendStub)
 
       // then
-      assertZIO(response.map(_.code.code))(equalTo(400)) //Bad request
+      assertZIO(response.map(_.code.code))(equalTo(400)) // Bad request
     }
-  )
+  ).provideShared(Layers.sharedLayer)
+
 }
 
 object Fixtures {
   val schemaId = "test-schema-id"
+
   val validJsonSchema = """|{
                            |  "$schema": "http://json-schema.org/draft-04/schema#",
                            |  "type": "object",
@@ -160,6 +175,7 @@ object Fixtures {
                            |  "required": ["source", "destination"]
                            |}
                            |""".stripMargin
+
   val validJsonWithNulls = """|{
                               |  "source": "/home/alice/image.iso",
                               |  "destination": "/mnt/storage",
