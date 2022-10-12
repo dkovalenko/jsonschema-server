@@ -1,7 +1,8 @@
 package com.dkovalenko
 
 import com.dkovalenko.http.SchemaAPI._
-import com.dkovalenko.http.ApiResult
+import com.dkovalenko.http.ApiResultSuccess
+import com.dkovalenko.http.ApiResultError
 import sttp.client3.testing.SttpBackendStub
 import sttp.client3.{UriContext, basicRequest}
 import sttp.tapir.server.stub.TapirStubInterpreter
@@ -36,21 +37,22 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .thenRunLogic()
         .backend()
 
-      val schemaId = "test-schema-id"
+      
 
       // when
       val response = basicRequest
-        .post(uri"http://test.com/schema/${schemaId}")
-        .body("{}")
-        .response(asJson[ApiResult])
+        .post(uri"http://test.com/schema/${Fixtures.schemaId}")
+        .body(Fixtures.validJsonSchema)
+        .response(asJson[ApiResultSuccess])
         .send(backendStub)
 
-      val result = ApiResult.Success(
+      val result = ApiResultSuccess.Created(
           action = "uploadSchema",
-          id = schemaId
+          id = Fixtures.schemaId
         )
       // then
       assertZIO(response.map(_.body))(isRight(equalTo(result)))
+      assertZIO(response.map(_.code.code))(equalTo(201))
     },
     test("return HTTP \"Bad Request\" for invalid schema") {
       // given
@@ -59,13 +61,11 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .thenRunLogic()
         .backend()
 
-      val schemaId = "test-schema-id"
-
       // when
       val response = basicRequest
-        .post(uri"http://test.com/schema/${schemaId}")
+        .post(uri"http://test.com/schema/${Fixtures.schemaId}")
         .body("invalid json")
-        .response(asJson[ApiResult])
+        .response(asJson[ApiResultError])
         .send(backendStub)
 
       // then
@@ -80,11 +80,11 @@ object SchemaAPISpec extends ZIOSpecDefault {
 
       // when
       val response = basicRequest
-        .get(uri"http://test.com/schema/test-schema-id")
+        .get(uri"http://test.com/schema/${Fixtures.schemaId}")
         .send(backendStub)
 
       // then
-      assertZIO(response.map(_.body))(isRight(equalTo("GET getSchema test-schema-id")))
+      assertZIO(response.map(_.body))(isRight(equalTo(Fixtures.validJsonSchema)))
     },
     test("verify valid document by schema") {
       // given
@@ -93,22 +93,84 @@ object SchemaAPISpec extends ZIOSpecDefault {
         .thenRunLogic()
         .backend()
 
-      val schemaId = "test-schema-id"
-
       // when
       val response = basicRequest
-        .post(uri"http://test.com/validate/${schemaId}")
-        .body("{}")
-        .response(asJson[ApiResult])
+        .post(uri"http://test.com/validate/${Fixtures.schemaId}")
+        .body(Fixtures.validJsonWithNulls)
+        .response(asJson[ApiResultSuccess])
         .send(backendStub)
 
-      val result = ApiResult.Success(
+      val result = ApiResultSuccess.Success(
           action = "validateDocument",
-          id = schemaId
+          id = Fixtures.schemaId
         )
       // then
       assertZIO(response.map(_.body))(isRight(equalTo(result)))
+    },
+     test("verify invalid document by schema") {
+      // given
+      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+        .whenServerEndpoint(validateDocServerEndpoint)
+        .thenRunLogic()
+        .backend()
+
+      // when
+      val response = basicRequest
+        .post(uri"http://test.com/validate/${Fixtures.schemaId}")
+        .body(Fixtures.invalidJsonDocument)
+        .response(asJson[ApiResultError])
+        .send(backendStub)
+
+      // then
+      assertZIO(response.map(_.code.code))(equalTo(400)) //Bad request
     }
-    // test("verify invalid document by schema") {
   )
+}
+
+object Fixtures {
+  val schemaId = "test-schema-id"
+  val validJsonSchema = """|{
+                           |  "$schema": "http://json-schema.org/draft-04/schema#",
+                           |  "type": "object",
+                           |  "properties": {
+                           |    "source": {
+                           |      "type": "string"
+                           |    },
+                           |    "destination": {
+                           |      "type": "string"
+                           |    },
+                           |    "timeout": {
+                           |      "type": "integer",
+                           |      "minimum": 0,
+                           |      "maximum": 32767
+                           |    },
+                           |    "chunks": {
+                           |      "type": "object",
+                           |      "properties": {
+                           |        "size": {
+                           |          "type": "integer"
+                           |        },
+                           |        "number": {
+                           |          "type": "integer"
+                           |        }
+                           |      },
+                           |      "required": ["size"]
+                           |    }
+                           |  },
+                           |  "required": ["source", "destination"]
+                           |}
+                           |""".stripMargin
+  val validJsonWithNulls = """|{
+                              |  "source": "/home/alice/image.iso",
+                              |  "destination": "/mnt/storage",
+                              |  "timeout": null,
+                              |  "chunks": {
+                              |    "size": 1024,
+                              |    "number": null
+                              |  }
+                              |}
+                              |""".stripMargin
+
+  val invalidJsonDocument = "[]"
+
 }

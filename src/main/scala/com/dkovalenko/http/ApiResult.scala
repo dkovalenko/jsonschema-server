@@ -4,31 +4,74 @@ import io.circe._
 import io.circe.generic.semiauto._
 import io.circe.syntax._
 import cats.syntax.functor._
+import com.dkovalenko.common.ApplicationError
 
-sealed trait ApiResult {
+sealed trait ApiResultSuccess {
   val action: String
   val id: String
   val status: String
 }
 
-object ApiResult {
-  case class Success(action: String, id: String, val status: String = "success") extends ApiResult
+sealed trait ApiResultError {
+  val action: String
+  val id: String
+  val status: String
+  val message: String
+}
 
-  case class Error(action: String, id: String, message: String, val status: String = "error") extends ApiResult
+object ApiResultSuccess {
+  private val SUCCESS = "success"
+  case class Success(action: String, id: String, val status: String = SUCCESS) extends ApiResultSuccess
 
-  def fromThrowable(ex: Throwable, action: String, id: String): ApiResult.Error = {
+  case class Created(action: String, id: String, val status: String = SUCCESS) extends ApiResultSuccess
+
+  implicit val successCodec: Codec[Success] = deriveCodec
+  implicit val createdCodec: Codec[Created] = deriveCodec
+  
+  implicit val encodeApiResult: Encoder[ApiResultSuccess] = Encoder.instance {
+    case a @ Success(_, _, _) => a.asJson
+    case a @ Created(_, _, _) => a.asJson
+  }
+  implicit val decodeApiResult: Decoder[ApiResultSuccess] = 
+    List[Decoder[ApiResultSuccess]](
+      Decoder[Success].widen,
+      Decoder[Created].widen
+    ).reduceLeft(_ or _)
+}
+
+object ApiResultError {
+  private val ERROR = "error"
+  case class Error(action: String, id: String, message: String, val status: String = ERROR) extends ApiResultError
+
+  case class ServerError(action: String, id: String, message: String, val status: String = ERROR) extends ApiResultError
+
+  case class NotFound(action: String, id: String, message: String, val status: String = ERROR) extends ApiResultError
+
+  def fromThrowable(ex: Throwable, action: String, id: String): ApiResultError = {
     Error(action, id, ex.getMessage())
   }
-  
-  implicit val successCodec: Codec[Success] = deriveCodec
-  implicit val errorCodec: Codec[Error] = deriveCodec
-  implicit val encodeApiResult: Encoder[ApiResult] = Encoder.instance {
-    case s @ Success(_, _, _) => s.asJson
-    case e @ Error(_, _, _, _) => e.asJson
+
+  def fromApplicationError(ex: ApplicationError, action: String, id: String): ApiResultError = {
+    ex match {
+      case ApplicationError.DBEntityNotFound => NotFound(action, id, ex.getMessage())
+      case ApplicationError.DBCommunicationError(message) => ServerError(action, id, message)
+      case e: ApplicationError.GeneralThrowable => fromThrowable(e, action, id)
+    }
   }
-  implicit val decodeApiResult: Decoder[ApiResult] = 
-    List[Decoder[ApiResult]](
-      Decoder[Success].widen,
+
+  implicit val errorCodec: Codec[Error] = deriveCodec
+  implicit val servererrorCodec: Codec[ServerError] = deriveCodec
+  implicit val notFoundCodec: Codec[NotFound] = deriveCodec
+
+  implicit val encodeApiResult: Encoder[ApiResultError] = Encoder.instance {
+    case a @ Error(_, _, _, _) => a.asJson
+    case a @ ServerError(_, _, _, _) => a.asJson
+    case a @ NotFound(_, _, _, _) => a.asJson
+  }
+  implicit val decodeApiResult: Decoder[ApiResultError] = 
+    List[Decoder[ApiResultError]](
+      Decoder[NotFound].widen,
+      Decoder[ServerError].widen,
       Decoder[Error].widen,
     ).reduceLeft(_ or _)
 }

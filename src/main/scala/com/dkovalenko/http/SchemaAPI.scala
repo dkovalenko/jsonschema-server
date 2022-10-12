@@ -6,9 +6,11 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.ztapir.ZServerEndpoint
 import zio._
-import ApiResult._
 import com.dkovalenko.schema.SchemaRepositoryRedis
 import com.dkovalenko.schema.SchemaServiceLive
+import sttp.model.StatusCode
+// import ApiResultSuccess._
+import ApiResultError._
 
 object SchemaAPI {
   case class SchemaID(id: String) extends AnyVal
@@ -16,57 +18,68 @@ object SchemaAPI {
   val repo    = new SchemaRepositoryRedis("localhost", 6379)
   val service = new SchemaServiceLive(repo)
 
+  val baseEndpoint = endpoint.errorOut(
+    oneOf[ApiResultError](
+      oneOfVariant(statusCode(StatusCode.NotFound).and(jsonBody[ApiResultError.NotFound].description("not found"))),
+      oneOfVariant(statusCode(StatusCode.BadRequest).and(jsonBody[ApiResultError.Error].description("bad request"))),
+      oneOfVariant(statusCode(StatusCode.InternalServerError).and(jsonBody[ApiResultError.ServerError].description("internal server error"))),
+      oneOfDefaultVariant(jsonBody[ApiResultError.Error].description("generic error"))
+    )
+  )
+
   // ====== get Schema
-  val getSchema: PublicEndpoint[SchemaID, ApiResult, String, Any] = endpoint
+  val getSchema: PublicEndpoint[SchemaID, ApiResultError, String, Any] = baseEndpoint
     .get
     .in("schema")
     .in(path[SchemaID]("id"))
     .out(stringBody)
-    .errorOut(jsonBody[ApiResult])
 
   val getSchemaServerEndpoint: ZServerEndpoint[Any, Any] = getSchema.serverLogic { schemaId =>
 
-    val result: Task[Either[ApiResult, String]] = service
+    val result: Task[Either[ApiResultError, String]] = service
       .getSchema(schemaId.id)
-      .mapError(error => ApiResult.fromThrowable(error, "getSchema", schemaId.id))
+      .mapError(error => ApiResultError.fromApplicationError(error, "getSchema", schemaId.id))
       .either
     result
   }
 
   // ====== update Schema
-  val updateSchema: PublicEndpoint[(SchemaID, String), ApiResult, ApiResult, Any] = endpoint
+  val updateSchema: PublicEndpoint[(SchemaID, String), ApiResultError, ApiResultSuccess, Any] = baseEndpoint
     .post
     .in("schema")
     .in(path[SchemaID]("id").and(stringJsonBody))
-    .out(jsonBody[ApiResult])
-    .errorOut(jsonBody[ApiResult])
+    .out(
+      oneOf[ApiResultSuccess](
+        oneOfVariant(statusCode(StatusCode.Created).and(jsonBody[ApiResultSuccess.Created].description("created"))),
+        oneOfDefaultVariant(jsonBody[ApiResultSuccess].description("default"))
+      )
+    )
 
   val updateSchemaServerEndpoint: ZServerEndpoint[Any, Any] = updateSchema
     .serverLogic {
       case (schemaId, schema) =>
-        val result: Task[Either[ApiResult, ApiResult]] = service
+        val result: Task[Either[ApiResultError, ApiResultSuccess]] = service
           .updateSchema(schemaId.id, schema)
-          .mapError(error => ApiResult.fromThrowable(error, "uploadSchema", schemaId.id))
-          .map(success => ApiResult.Success("uploadSchema", schemaId.id))
+          .mapError(error => ApiResultError.fromThrowable(error, "uploadSchema", schemaId.id))
+          .map(success => ApiResultSuccess.Created("uploadSchema", schemaId.id))
           .either
 
         result
     }
 
   // ====== validate Schema
-  val validateDoc: PublicEndpoint[(SchemaID, String), ApiResult, ApiResult, Any] = endpoint
+  val validateDoc: PublicEndpoint[(SchemaID, String), ApiResultError, ApiResultSuccess, Any] = baseEndpoint
     .post
     .in("validate")
     .in(path[SchemaID]("id").and(stringJsonBody))
-    .out(jsonBody[ApiResult])
-    .errorOut(jsonBody[ApiResult])
+    .out(jsonBody[ApiResultSuccess])
 
   val validateDocServerEndpoint: ZServerEndpoint[Any, Any] = validateDoc
       .serverLogic { case (schemaId, jsonDoc) =>
         val result = service
           .validateDocument(schemaId.id, jsonDoc)
-          .mapError(error => ApiResult.fromThrowable(error, "validateDocument", schemaId.id))
-          .map(success => ApiResult.Success("validateDocument", schemaId.id))
+          .mapError(error => ApiResultError.fromThrowable(error, "validateDocument", schemaId.id))
+          .map(success => ApiResultSuccess.Success("validateDocument", schemaId.id))
           .either
         result
       }

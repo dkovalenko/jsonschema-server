@@ -16,7 +16,7 @@ class SchemaServiceLive(repo: SchemaRepository) extends SchemaService {
   def getSchema(key: String): ZIO[Any, ApplicationError, String] =
     repo
       .getByIdAsString(key)
-      .catchAll(failure => ZIO.fail(ApplicationError.GeneralThrowable(failure)))
+      .catchAll(failure => ZIO.fail(ApplicationError.DBCommunicationError(failure.getMessage())))
       .flatMap { schemaOpt =>
         schemaOpt match {
           case Some(schema) => ZIO.succeed(schema)
@@ -25,15 +25,17 @@ class SchemaServiceLive(repo: SchemaRepository) extends SchemaService {
       }
 
   def updateSchema(key: String, value: String): ZIO[Any, ApplicationError, Boolean] =
-    repo
-      .setById(key, value)
-      .catchAll(failure => ZIO.fail(ApplicationError.GeneralThrowable(failure)))
+    (for {
+      isValid <- ZIO.fromTry(Validator.tryParseSchema(value))
+        .catchAll(failure => ZIO.fail(ApplicationError.GeneralThrowable(failure)))
+      result  <- repo.setById(key, value)
+        .catchAll(failure => ZIO.fail(ApplicationError.DBCommunicationError(failure.getMessage())))
+    } yield result)
 
   def validateDocument(schemaKey: String, json: String): ZIO[Any, ApplicationError, Boolean] =
     (for {
-      schema  <- getSchema(schemaKey)
+      schema        <- getSchema(schemaKey)
       sanitizedJson <- ZIO.fromEither(parse(json).map(_.deepDropNullValues))
-      _ = println(sanitizedJson)
       isValid <- ZIO.fromTry(Validator.validate(sanitizedJson.noSpaces, schema))
     } yield isValid)
       .catchAll(failure => ZIO.fail(ApplicationError.GeneralThrowable(failure)))
