@@ -23,7 +23,7 @@ object SchemaRepository {
 case class SchemaRepositoryRedis(config: RedisConfig) extends SchemaRepository {
 
   implicit val akkaSystem = akka.actor.ActorSystem()
-  val redis               = RedisClient(config.host, config.port) // Better way
+  val redis               = RedisClient(config.host, config.port)
 
   def getByIdAsString(key: String): Task[Option[String]] = {
     ZIO.fromFuture(implicit ec => redis.get(key).map(_.map(_.utf8String)))
