@@ -1,143 +1,139 @@
 package com.dkovalenko
 
-import com.dkovalenko.http.SchemaAPI._
-import com.dkovalenko.http.ApiResultSuccess
+import com.dkovalenko.config.RedisConfig
 import com.dkovalenko.http.ApiResultError
-import sttp.client3.testing.SttpBackendStub
-import sttp.client3.{UriContext, basicRequest}
-import sttp.tapir.server.stub.TapirStubInterpreter
-import zio.test.Assertion._
-import zio.test.{ZIOSpecDefault, assertZIO}
-
-import io.circe.generic.auto._
-import sttp.client3.circe._
-import sttp.tapir.ztapir.RIOMonadError
+import com.dkovalenko.http.ApiResultSuccess
 import com.dkovalenko.http.SchemaAPI
 import com.dkovalenko.http.SchemaAPITapir
-import com.dkovalenko.schema.SchemaServiceLive
 import com.dkovalenko.schema.SchemaRepositoryRedis
-import com.dkovalenko.config.RedisConfig
+import com.dkovalenko.schema.SchemaServiceLive
+import sttp.client3.UriContext
+import sttp.client3.basicRequest
+import sttp.client3.circe._
+import sttp.client3.testing.SttpBackendStub
+import sttp.tapir.server.stub.TapirStubInterpreter
+import sttp.tapir.ztapir.RIOMonadError
 import zio.ZLayer
+import zio.test.Assertion._
+import zio.test.ZIOSpecDefault
+import zio.test.assertZIO
 
 object SchemaAPISpec extends ZIOSpecDefault {
 
   object Layers {
-    val sharedLayer = ZLayer.make[SchemaAPI](
+
+    val testLayer = ZLayer.make[SchemaAPI](
       SchemaAPITapir.layer,
       SchemaServiceLive.layer,
       SchemaRepositoryRedis.layer,
-      RedisConfig.test
+      RedisConfig.test // @TODO: use testcontainer for the best DX
     )
+
   }
 
   def spec = suite("Schema API should")(
     test("return HTTP \"Not Found\" for non-existent schema") {
-      for {
+      val result = for {
         endpoint <- SchemaAPI.getSchemaServerEndpoint()
         backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
           .whenServerEndpointRunLogic(endpoint)
-          // .thenRunLogic()
           .backend()
 
-        response = basicRequest
+        response <- basicRequest
           .get(uri"http://test.com/schema/non-existent-schema-id")
           .send(backendStub)
-      } yield assertZIO(response.map(_.code.code))(equalTo(404))
-
+      } yield response
+      assertZIO(result.map(_.code.code))(equalTo(404))
     },
     test("upload valid schema") {
-      // given
-      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
-        .whenServerEndpoint(updateSchemaServerEndpoint)
-        .thenRunLogic()
-        .backend()
+      val result = for {
+        endpoint <- SchemaAPI.updateSchemaServerEndpoint()
+        backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+          .whenServerEndpointRunLogic(endpoint)
+          .backend()
 
-      // when
-      val response = basicRequest
-        .post(uri"http://test.com/schema/${Fixtures.schemaId}")
-        .body(Fixtures.validJsonSchema)
-        .response(asJson[ApiResultSuccess])
-        .send(backendStub)
+        response <- basicRequest
+          .post(uri"http://test.com/schema/${Fixtures.schemaId}")
+          .body(Fixtures.validJsonSchema)
+          .response(asJson[ApiResultSuccess])
+          .send(backendStub)
+      } yield response
 
-      val result = ApiResultSuccess.Created(
+      val expectedResult = ApiResultSuccess.Created(
         action = "uploadSchema",
         id     = Fixtures.schemaId
       )
-      // then
-      assertZIO(response.map(_.body))(isRight(equalTo(result)))
-      assertZIO(response.map(_.code.code))(equalTo(201))
+      assertZIO(result.map(_.body))(isRight(equalTo(expectedResult))) *>
+        assertZIO(result.map(_.code.code))(equalTo(201))
     },
     test("return HTTP \"Bad Request\" for invalid schema") {
-      // given
-      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
-        .whenServerEndpoint(updateSchemaServerEndpoint)
-        .thenRunLogic()
-        .backend()
+      val result = for {
+        endpoint <- SchemaAPI.updateSchemaServerEndpoint()
+        backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+          .whenServerEndpointRunLogic(endpoint)
+          .backend()
 
-      // when
-      val response = basicRequest
-        .post(uri"http://test.com/schema/${Fixtures.schemaId}")
-        .body("invalid json")
-        .response(asJson[ApiResultError])
-        .send(backendStub)
+        response <- basicRequest
+          .post(uri"http://test.com/schema/${Fixtures.schemaId}")
+          .body("invalid json")
+          .response(asJson[ApiResultError])
+          .send(backendStub)
+      } yield response
 
-      // then
-      assertZIO(response.map(_.code.code))(equalTo(400)) // Bad request
+      assertZIO(result.map(_.code.code))(equalTo(400)) // Bad request
     },
     test("return existing schema") {
-      // given
-      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
-        .whenServerEndpoint(getSchemaServerEndpoint)
-        .thenRunLogic()
-        .backend()
+      val result = for {
+        endpoint <- SchemaAPI.getSchemaServerEndpoint()
+        backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+          .whenServerEndpointRunLogic(endpoint)
+          .backend()
 
-      // when
-      val response = basicRequest
-        .get(uri"http://test.com/schema/${Fixtures.schemaId}")
-        .send(backendStub)
+        response <- basicRequest
+          .get(uri"http://test.com/schema/${Fixtures.schemaId}")
+          .send(backendStub)
+      } yield response
 
-      // then
-      assertZIO(response.map(_.body))(isRight(equalTo(Fixtures.validJsonSchema)))
+      assertZIO(result.map(_.body))(isRight(equalTo(Fixtures.validJsonSchema)))
     },
     test("verify valid document by schema") {
-      // given
-      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
-        .whenServerEndpoint(validateDocServerEndpoint)
-        .thenRunLogic()
-        .backend()
+      val result = for {
+        endpoint <- SchemaAPI.validateDocServerEndpoint()
+        backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+          .whenServerEndpointRunLogic(endpoint)
+          .backend()
 
-      // when
-      val response = basicRequest
-        .post(uri"http://test.com/validate/${Fixtures.schemaId}")
-        .body(Fixtures.validJsonWithNulls)
-        .response(asJson[ApiResultSuccess])
-        .send(backendStub)
+        response <- basicRequest
+          .post(uri"http://test.com/validate/${Fixtures.schemaId}")
+          .body(Fixtures.validJsonWithNulls)
+          .response(asJson[ApiResultSuccess])
+          .send(backendStub)
+      } yield response
 
-      val result = ApiResultSuccess.Success(
+      val expectedResult = ApiResultSuccess.Success(
         action = "validateDocument",
         id     = Fixtures.schemaId
       )
-      // then
-      assertZIO(response.map(_.body))(isRight(equalTo(result)))
+
+      assertZIO(result.map(_.body))(isRight(equalTo(expectedResult)))
     },
     test("verify invalid document by schema") {
-      // given
-      val backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
-        .whenServerEndpoint(validateDocServerEndpoint)
-        .thenRunLogic()
-        .backend()
+      val result = for {
+        endpoint <- SchemaAPI.validateDocServerEndpoint()
+        backendStub = TapirStubInterpreter(SttpBackendStub(new RIOMonadError[Any]))
+          .whenServerEndpointRunLogic(endpoint)
+          .backend()
 
-      // when
-      val response = basicRequest
-        .post(uri"http://test.com/validate/${Fixtures.schemaId}")
-        .body(Fixtures.invalidJsonDocument)
-        .response(asJson[ApiResultError])
-        .send(backendStub)
+        response <- basicRequest
+          .post(uri"http://test.com/validate/${Fixtures.schemaId}")
+          .body(Fixtures.invalidJsonDocument)
+          .response(asJson[ApiResultError])
+          .send(backendStub)
+      } yield response
 
-      // then
-      assertZIO(response.map(_.code.code))(equalTo(400)) // Bad request
+      assertZIO(result.map(_.code.code))(equalTo(400)) // Bad request
     }
-  ).provideShared(Layers.sharedLayer)
+  ).provideShared(Layers.testLayer)
 
 }
 

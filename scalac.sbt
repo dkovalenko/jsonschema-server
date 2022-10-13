@@ -5,7 +5,7 @@ ThisBuild / scalacOptions ++=
     "-language:implicitConversions",
     "-unchecked",
     "-Xfatal-warnings",
-    "-Wunused:imports",
+    "-Wunused:imports"
     // "-Yexplicit-nulls", // experimental (I've seen it cause issues with circe)
   )
 // Seq("-new-syntax", "-rewrite")

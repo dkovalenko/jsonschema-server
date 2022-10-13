@@ -5,7 +5,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / excludeLintKeys ++= Set(
   autoStartServer,
   turbo,
-  evictionWarningOptions,
+  evictionWarningOptions
 )
 
 ThisBuild / evictionErrorLevel := Level.Warn
@@ -26,6 +26,7 @@ ThisBuild / watchTriggeredMessage        := Watch.clearScreenOnTrigger
 ThisBuild / watchForceTriggerOnAnyChange := true
 
 ThisBuild / shellPrompt := { state => s"${prompt(projectName(state))}> " }
+
 ThisBuild / watchStartMessage := {
   case (iteration, ProjectRef(build, projectName), commands) =>
     Some {

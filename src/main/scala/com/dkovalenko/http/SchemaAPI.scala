@@ -1,14 +1,14 @@
 package com.dkovalenko.http
 
+import com.dkovalenko.schema.SchemaService
+import sttp.model.StatusCode
 import sttp.tapir._
-
 import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.ztapir.ZServerEndpoint
 import zio._
-import sttp.model.StatusCode
+
 import ApiResultError._
-import com.dkovalenko.schema.SchemaService
 
 trait SchemaAPI {
 
@@ -26,21 +26,22 @@ object SchemaAPI {
 
   case class SchemaID(id: String) extends AnyVal
 
-  val GET_SCHEMA = "getSchema"
+  val GET_SCHEMA    = "getSchema"
   val UPLOAD_SCHEMA = "uploadSchema"
-  val VALIDATE_DOC = "validateDocument"
+  val VALIDATE_DOC  = "validateDocument"
 
   def getSchemaAPIEndpoints(): ZIO[SchemaAPI, Nothing, List[ZServerEndpoint[Any, Any]]] =
     ZIO.serviceWith[SchemaAPI](_.getSchemaAPIEndpoints())
 
-  def getSchemaServerEndpoint(): ZIO[SchemaAPI,Nothing,ZServerEndpoint[Any,Any]] = 
+  def getSchemaServerEndpoint(): ZIO[SchemaAPI, Nothing, ZServerEndpoint[Any, Any]] =
     ZIO.serviceWith[SchemaAPI](_.getSchemaServerEndpoint())
 
-  def updateSchemaServerEndpoint(): ZIO[SchemaAPI,Nothing,ZServerEndpoint[Any,Any]] = 
+  def updateSchemaServerEndpoint(): ZIO[SchemaAPI, Nothing, ZServerEndpoint[Any, Any]] =
     ZIO.serviceWith[SchemaAPI](_.updateSchemaServerEndpoint())
 
-  def validateDocServerEndpoint(): ZIO[SchemaAPI,Nothing,ZServerEndpoint[Any,Any]] = 
+  def validateDocServerEndpoint(): ZIO[SchemaAPI, Nothing, ZServerEndpoint[Any, Any]] =
     ZIO.serviceWith[SchemaAPI](_.validateDocServerEndpoint())
+
 }
 
 case class SchemaAPITapir(service: SchemaService) extends SchemaAPI {

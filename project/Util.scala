@@ -4,6 +4,7 @@ import scala.sys.process._
 import sbt._
 
 object Util {
+
   def styled(in: Any): String =
     scala.Console.CYAN + in + scala.Console.RESET
 
@@ -48,4 +49,5 @@ object Util {
 
   val Cctt: String =
     "compile->compile;test->test"
+
 }
